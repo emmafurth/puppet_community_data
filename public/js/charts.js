@@ -47,15 +47,29 @@ function percentMergedChart(location, mergeDimension) {
 
 function perRepositoryChart(location, repoDimension) {
   var repoGroup = repoDimension.group().reduceCount().orderNatural();
-
-  var repoChart = dc.rowChart(location)
-    .width(400)
-    .height(200)
+	repoList = repoGroup.top(repoGroup.size()).map(function(a){return a.key});
+	//repoList = repoGroup.all().map(function(a){return a.key});
+	
+  var repoChart = dc.barChart(location)
+    .width(1000)
+    .height(300)
+    .margins({top: 10, right: 10, bottom: 110, left: 60})
+    .centerBar(true)
     .group(repoGroup)
     .dimension(repoDimension)
-    .colors(['#501FAC', '#6742AC', '#7D64AC', '#9487AC']);
+    .x(d3.scale.ordinal().domain(repoList))
+    .xUnits(dc.units.ordinal);
 
-  repoChart.xAxis().ticks(5);
+	repoChart.renderlet(function(chart){
+		chart.selectAll("g.x text")
+			.style("text-anchor", "end")
+			.attr("dx", "-.8em")
+      .attr("dy", ".15em")
+			.attr('transform', "rotate(-65)");
+		
+		chart.selectAll('rect.bar').attr('width', 10);
+	});
+	
 }
 
 function pullRequestsPerWeek(location, weekDimension, weekDomain) {
@@ -110,101 +124,4 @@ function lifetimesPerMonth(location, monthDimension, monthDomain) {
 
   lifetimes.valueAccessor(function(p) { return p.value.avg; });
 }
-
-var renderFunction = function(dataset) {
-  var dateFormat = d3.time.format.utc('%Y-%m-%dT%H:%M:%SZ');
-  var dataset = dataset.map(function(d){
-    return {'month': d3.time.month(dateFormat.parse(d.close_time)),
-      'repo': d.repo_name,
-      'ttl': d.ttl,
-      'week': d3.time.week(dateFormat.parse(d.close_time)),
-      'community': d.community,
-      'merged': d.merged};
-  });
-
-  var monthDomain = d3.extent(dataset, function(d){return d.month;});
-  var weekDomain = d3.extent(dataset, function(d){return d.week;});
-
-  var pull_requests = crossfilter(dataset);
-  var all = pull_requests.groupAll();
-
-  var monthDimension = pull_requests.dimension(function(d){return d.month;});
-
-  var repoDimension = pull_requests.dimension(function(d){return d.repo;});
-
-  var weekDimension = pull_requests.dimension(function(d){return d.week;});
-
-  var communityDimension = pull_requests.dimension(function(d){return d.community;});
-
-  var mergeDimension = pull_requests.dimension(function(d){return d.merged;});
-
-  monthlyBarChart("#per-month", monthDimension, monthDomain);
-
-  commChart("#community", communityDimension);
-
-  percentMergedChart("#merged", mergeDimension);
-
-  perRepositoryChart("#repo-names", repoDimension);
-
-  pullRequestsPerWeek("#per-week", weekDimension, weekDomain);
-
-  lifetimesPerMonth("#lifetimes", monthDimension, monthDomain);
-
-  dc.renderAll();
-
-  $('#inspectButton1').popover();
-  $('#inspectButton2').popover();
-  $('#inspectButton3').popover();
-  $('#inspectButton4').popover();
-  $('#inspectButton5').popover();
-  $('#inspectButton6').popover();
-};
-
-d3.json("/data/puppet_pulls", renderFunction);
-
-var adjustGraphs = function(){
-  var value = graphSlider.getValue();
-  var startDate = new Date();
-  var dateString;
-  console.log(value);
-  switch(value) {
-    //0 = all time
-    case 0:
-      startDate.setFullYear(2011, 08, 01);
-      barGap = 2;
-      monthTickAmount = 2;
-      weekTickAmount = 8;
-      break;
-    // 1 = last 2 years
-    case 1:
-      startDate.setFullYear(startDate.getFullYear() - 2);
-      barGap = 2;
-      monthTickAmount = 2;
-      weekTickAmount = 6;
-      break;
-    // 2 = last year
-    case 2:
-      startDate.setFullYear(startDate.getFullYear() - 1);
-      barGap = 20;
-      monthTickAmount = 1;
-      weekTickAmount = 4;
-      break;
-    //3 = last 6 months
-    case 3:
-      startDate.setMonth(startDate.getMonth() - 9);
-      barGap = 50;
-      monthTickAmount = 1;
-      weekTickAmount = 4;
-      break;
-    //4 = last 3 months
-    case 4:
-      startDate.setMonth(startDate.getMonth() - 3);
-      barGap = 300;
-      monthTickAmount = 1;
-      weekTickAmount = 4;
-      break;
-  }
-  dateString = startDate.toString('yyyy-MM-dd');
-  d3.json("/data/puppet_pulls?start=" + dateString, renderFunction);
-};
 

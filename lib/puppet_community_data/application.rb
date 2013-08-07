@@ -51,23 +51,6 @@ module PuppetCommunityData
     def github_api
       @github_api ||= Octokit::Client.new(:auto_traversal => true, :oauth_token => github_oauth_token)
     end
-
-    ##
-    # Given an array of repository names, genearte_repositories
-    # will create a repository object for each one and add it to
-    # the instance variable @repositories
-    #
-    # @param [Array] repo_names is an array of strings which
-    # represent the names of the repositories to collect pull
-    # requests from
-    def generate_repositories(repo_names)
-      @repositories ||= Array.new
-
-      repo_names.each do |repo_name|
-        repositories.push(Repository.new(repo_name))
-      end
-    end
-
     ##
     # Given an array of repository names as strings,
     # write_pull_requests_to_database will generate repositry objects
@@ -75,6 +58,7 @@ module PuppetCommunityData
     # requests from that repository, and if they are not already in
     # the database, it will add them.
     def write_pull_requests_to_database
+    	repositories = Repository.all
       repositories.each do |repo|
         pull_requests = repo.closed_pull_requests(github_api)
         pull_requests.each do |pull_request|

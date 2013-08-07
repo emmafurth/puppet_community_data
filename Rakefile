@@ -1,3 +1,4 @@
+require 'httparty'
 require 'json'
 require 'yaml'
 require 'erb'
@@ -37,8 +38,12 @@ namespace :db do
 end
 
 namespace :job do
+
+	# First runs the repositories task, then updates the pull_requests table accordingly
+	# so long as it's Sunday. If you don't want heroku updating the pull_requests table every
+	# day (and thus racking up our bill for dyno hours), tell heroku to run this task daily
   desc "Import pull requests into the DB if it's Sunday"
-  task :import_if_sunday => :environment do |t|
+  task :import_if_sunday => [:environment, :repositories] do |t|
 
     logger = Logger.new(STDOUT)
 
@@ -46,24 +51,44 @@ namespace :job do
       logger.debug("Data not imported since today is not Sunday")
       Kernel.exit(true)
     end
-
-    repo_names = ['puppetlabs/hiera','puppetlabs/puppetlabs-stdlib','puppetlabs/facter','puppetlabs/puppet']
-
+    
     app = PuppetCommunityData::Application.new
     app.setup_environment
-    app.generate_repositories(repo_names)
     app.write_pull_requests_to_database
   end
 
-
+	# Like above, but runs whenever you want. Don't have heroku run this every day if you don't
+	# want large bills for lots of dyno hours
   desc "Import pull requests into the DB"
-  task :import => :environment do |t|
-
-    repo_names = ['puppetlabs/hiera','puppetlabs/puppetlabs-stdlib','puppetlabs/facter','puppetlabs/puppet']
+  task :import => [:environment, :repositories] do |t|
 
     app = PuppetCommunityData::Application.new
     app.setup_environment
-    app.generate_repositories(repo_names)
     app.write_pull_requests_to_database
+  end
+  
+  # Gets all puppet forge modules, and adds their github repo data to the repositories table
+  # (if they aren't already in the table)
+  # Gets repoistory name/ owner login by extracting that from the source url. Note that this 
+  # task will skip over anymodules whose source url doesn't look like this (stuff in parentheses
+  # is optional):
+  # http(s)://github.com/<github_username>/<repository_name>(.git)(/)
+  desc "Import repository data for Puppet Forge modules"
+  task :repositories => :environment do |t|
+  	response = HTTParty.get("http://forgeapi.puppetlabs.com/v2/users/puppetlabs/modules")
+		return nil unless response.success?
+		response.each do |mod|
+			# You may want to just add the field github_repo_name to the forge database instead of doing this next bit...
+			next unless mod["source_url"].include? "github"
+			mod["source_url"].chomp! "/"
+			mod["source_url"].chomp! ".git"
+			next unless mod["source_url"] =~ /github.com\/[a-zA-Z0-9][a-zA-Z0-9-]*\/[a-zA-Z0-9_.-]+$/
+			name = mod["source_url"].sub /(https?:\/\/)?github.com\//, ''
+			puts "#{mod['name']}, #{mod['source_url']}, #{name}"
+			
+			tmp = name.split "/"
+			
+			Repository.where( :module_name => mod["name"], :repository_owner => tmp[0], :repository_name => tmp[1] ).first_or_create
+		end
   end
 end
